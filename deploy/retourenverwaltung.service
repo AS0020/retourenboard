@@ -1,0 +1,28 @@
+[Unit]
+Description=retourenboard. - gemeinsame Retourenverwaltung
+After=network.target
+
+[Service]
+Type=simple
+User=retourenverwaltung
+Group=retourenverwaltung
+WorkingDirectory=/opt/retourenverwaltung/current
+EnvironmentFile=/etc/retourenverwaltung.env
+ExecStart=/opt/retourenverwaltung/node/bin/node server/index.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/retourenverwaltung
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

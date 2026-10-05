@@ -1,0 +1,10 @@
+* text=auto
+*.sh text eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.zip binary
+*.wasm binary
+*.bcmap binary
+*.pfb binary
+*.ttf binary
