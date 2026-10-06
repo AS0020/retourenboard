@@ -1,6 +1,0 @@
-PDF.js 6.4.299 — Mozilla contributors
-Source: https://www.npmjs.com/package/pdfjs-dist/v/6.4.299
-Documentation: https://mozilla.github.io/pdf.js/
-Distribution: official npm package pdfjs-dist@6.4.299 (downloaded 2026-10-05).
-License: Apache-2.0, see LICENSE and bundled asset licenses.
-Only browser renderer/worker and font/CMap/WASM resources are distributed.
