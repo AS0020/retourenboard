@@ -1,3 +1,5 @@
+<img width="1267" height="212" alt="image" src="https://github.com/user-attachments/assets/1a74c91e-51b6-4f7d-b18b-451c5464bcff" />
+
 # retourenboard. – gemeinsame Retourenverwaltung
 
 Deutsche Web-App für Produkte und Retouren. Alle angemeldeten Personen sehen denselben Bestand. Produkte, Retouren, Stammdaten, CSV-Exporte und Dateianhänge sind ausschließlich nach Anmeldung zugänglich. Der erste Account ist Administrator, weitere Konten legt der Admin an.
