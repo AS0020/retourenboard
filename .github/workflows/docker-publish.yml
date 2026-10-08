@@ -1,0 +1,130 @@
+name: Build and publish Docker image
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Optional release tag, e.g. v3.2.18 (empty = latest release)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: docker-release-${{ github.event.release.tag_name || inputs.release_tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build and push (amd64 + arm64)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download, verify and extract Linux release
+        id: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REQUESTED_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
+        run: |
+          set -euo pipefail
+
+          tag="$REQUESTED_TAG"
+          if [[ -z "$tag" ]]; then
+            tag="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq '.tagName')"
+          fi
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Invalid release tag: $tag"
+            exit 1
+          fi
+
+          version="${tag#v}"
+          asset="retourenboard-linux-${version}.tar.gz"
+          mkdir -p release build-context
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" \
+            --pattern "$asset" --pattern "${asset}.sha256" --dir release
+
+          test -s "release/$asset"
+          test -s "release/${asset}.sha256"
+          expected="$(awk 'NR==1 {print $1}' "release/${asset}.sha256")"
+          if [[ ! "$expected" =~ ^[[:xdigit:]]{64}$ ]]; then
+            echo "::error::Invalid release SHA256 file"
+            exit 1
+          fi
+          actual="$(sha256sum "release/$asset" | awk '{print $1}')"
+          if [[ "${expected,,}" != "${actual,,}" ]]; then
+            echo "::error::Linux release SHA256 mismatch"
+            exit 1
+          fi
+
+          tar -xzf "release/$asset" -C build-context
+          for file in Dockerfile package.json dist/server/index.js scripts/restore-backup.mjs scripts/recover-account.mjs; do
+            test -f "build-context/$file"
+          done
+          package_version="$(jq -r '.version' build-context/package.json)"
+          if [[ "$package_version" != "$version" ]]; then
+            echo "::error::package.json version ($package_version) differs from release ($version)"
+            exit 1
+          fi
+
+          latest_stable="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq '.tagName')"
+          prerelease="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq '.isPrerelease')"
+          is_latest=false
+          if [[ "$tag" == "$latest_stable" && "$prerelease" == "false" ]]; then
+            is_latest=true
+          fi
+          {
+            echo "version=$version"
+            echo "is_latest=$is_latest"
+          } >> "$GITHUB_OUTPUT"
+          echo "Validated release: $tag (latest=$is_latest)"
+
+      - name: Prepare image tags
+        id: tags
+        shell: bash
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          IS_LATEST: ${{ steps.release.outputs.is_latest }}
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          {
+            echo "tags<<EOF"
+            echo "${image}:${VERSION}"
+            if [[ "$IS_LATEST" == "true" ]]; then
+              echo "${image}:latest"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push multi-architecture image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./build-context
+          file: ./build-context/Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.tags.outputs.tags }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.release.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true
